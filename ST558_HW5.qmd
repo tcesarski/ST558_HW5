@@ -1,0 +1,78 @@
+---
+title: "ST 558 Homework 5"
+format: html
+author: "Taylor Cesarski"
+---
+
+# Task 1: Conceptual Questions
+### Question 1: What is the purpose of using cross-validation when fitting a random forest model?
+
+### Question 2: Describe the bagged tree algorithm.
+
+### Question 3: What is meant by a general linear model?
+
+### Question 4: When fitting a multiple linear regression model, what does adding an interaction term do? That is, what does it allow the model to do differently as compared to when it is not included in the model?
+
+### Question 5: Why do we split our data into a training and test set?
+
+
+```{r}
+library(tidyverse)
+heart_data <- read_csv("heart.csv")
+```
+
+# Quick EDA/Data Preparation
+
+```{r}
+heart_data <- heart_data |>
+  select(-ST_Slope) |>
+  mutate(HeartDisease = as.factor(HeartDisease),
+         FastingBS = as.factor(FastingBS))
+#Check for missing values.
+
+missing_vals <- colSums(is.na(heart_data))
+missing_vals
+
+
+#Make a stacked bar chart of heart disease by gender.
+ggplot(heart_data, aes(x = Sex, fill = HeartDisease)) +
+  geom_bar()
+
+#Density Plot of Resting BP faceted by Heart Disease.
+ggplot(heart_data, aes(x = RestingBP))+
+  geom_density() +
+  facet_wrap(~HeartDisease)
+
+#Boxplots of age by heart disease.
+ggplot(heart_data, aes(x = Age, y = HeartDisease)) +
+  geom_boxplot()
+
+#Boxplots of cholesterol by heart disease.
+ggplot(heart_data, aes(x = Cholesterol, y = HeartDisease)) +
+  geom_boxplot()
+
+#Chest pain type and heart disease bar plots.
+ggplot(heart_data, aes(x = ChestPainType, fill = HeartDisease)) +
+  geom_bar()
+
+#Make two way contingency table of heart disease and fasting blood sugar.
+table(heart_data$HeartDisease, heart_data$FastingBS)
+
+#Numeric Summaries for Resting BP for those with and without heart disease.
+heart_data |>
+  group_by(HeartDisease) |>
+  summarize(mean_max_hr = mean(MaxHR),
+            mean_age = mean(Age),
+            mean_bp = mean(RestingBP),
+            mean_chol = mean(Cholesterol))
+
+heart_data
+
+library(caret)
+dummies <- dummyVars(HeartDisease ~ ., data = heart_data)
+head(predict(dummies, newdata = heart_data))
+
+```
+
+
+
