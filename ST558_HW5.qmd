@@ -35,44 +35,50 @@ library(tidyverse)
 heart_data <- read_csv("heart.csv")
 ```
 
-# Quick EDA/Data Preparation
-
+# Quick EDA/Data Preparation - Questions 1 and 2.
 ```{r}
 heart_data <- heart_data |>
   select(-ST_Slope) |>
   mutate(HeartDisease = as.factor(HeartDisease),
          FastingBS = as.factor(FastingBS))
+heart_data
 #Check for missing values.
 
 missing_vals <- colSums(is.na(heart_data))
 missing_vals
 
-
 #Make a stacked bar chart of heart disease by gender.
+#It appears males get heart disease more frequently than females.
 ggplot(heart_data, aes(x = Sex, fill = HeartDisease)) +
   geom_bar()
 
 #Density Plot of Resting BP faceted by Heart Disease.
+#It appears that resting BP is slightly higher in those with heart disease.
 ggplot(heart_data, aes(x = RestingBP))+
   geom_density() +
   facet_wrap(~HeartDisease)
 
 #Boxplots of age by heart disease.
+#It appears that as age increases, likelihood of heart disease increases as well.
 ggplot(heart_data, aes(x = Age, y = HeartDisease)) +
   geom_boxplot()
 
 #Boxplots of cholesterol by heart disease.
+#Surprisingly, cholesterol appears lower with heart disease, but there is a lot of variability in the non-heart disease group.
 ggplot(heart_data, aes(x = Cholesterol, y = HeartDisease)) +
   geom_boxplot()
 
 #Chest pain type and heart disease bar plots.
+#It appears that ASY chest pain is a strong indicator of heart disease.
 ggplot(heart_data, aes(x = ChestPainType, fill = HeartDisease)) +
   geom_bar()
 
-#Make two way contingency table of heart disease and fasting blood sugar.
+
+#Make two way contingency table of heart disease and fasting blood sugar. 
 table(heart_data$HeartDisease, heart_data$FastingBS)
 
-#Numeric Summaries for Resting BP for those with and without heart disease.
+#Means of HR, Age, BP, and chol for those with and without heart disease. 
+#Group with heart disease has lower max HR, higher age, slightly higher BP, and lower cholesterol. 
 heart_data |>
   group_by(HeartDisease) |>
   summarize(mean_max_hr = mean(MaxHR),
@@ -82,9 +88,125 @@ heart_data |>
 
 heart_data
 
+```
+
+```{r}
 library(caret)
-dummies <- dummyVars(HeartDisease ~ ., data = heart_data)
-head(predict(dummies, newdata = heart_data))
+heart_data
+
+#Numeric predcitors
+num_heart <- heart_data |>
+  select(Age, RestingBP, Cholesterol, MaxHR, Oldpeak)
+target_heart <- heart_data |>
+  select(HeartDisease)
+
+
+
+
+dummies <- dummyVars(HeartDisease ~ Sex + ExerciseAngina + ChestPainType + RestingECG, data = heart_data)
+dummies
+dummy_data <- predict(dummies, newdata = heart_data)
+
+heart_final <- cbind(num_heart, dummy_data, target_heart)
+head(heart_final)
+```
+
+# Split your Data
+```{r}
+set.seed(100)
+trainIndex <- createDataPartition(heart_final$HeartDisease, p =0.7, list = FALSE)
+heartTrain <- heart_final[trainIndex, ]
+heartTest <- heart_final[-trainIndex, ]
+```
+
+# kNN
+
+```{r}
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+set.seed(50)
+#Based on EDA, I chose to use MaxHR, Age, and Cholesterol in the model. It didn't seem like there was a significant difference in blood pressure.
+knn_fit <- train(HeartDisease ~ MaxHR + Age + Cholesterol,
+                 data = heartTrain, 
+                 method = "knn",
+                 trControl=trctrl,
+                 preProcess = c("center", "scale"),
+                 tuneGrid = data.frame(k = 1:40))
+
+#It appears that the best fit was using 30 neighbors as this gave the highest accuracy.
+knn_fit
+
+#Test the model on the test data set.
+knn_predict <- predict(knn_fit, newdata = heartTest)
+
+confusionMatrix(knn_predict, heartTest$HeartDisease)
+
+#This correctly predicts heart disease about 71.64% of the time.
+
+
+```
+
+
+# Logistic Regression
+```{r}
+#Not using dummy variables.
+set.seed(100)
+trainIndex <- createDataPartition(heart_data$HeartDisease, p =0.7, list = FALSE)
+heartTrain <- heart_data[trainIndex, ]
+heartTest <- heart_data[-trainIndex, ]
+
+heartTrain
+
+#Logistic with just some main interaction terms.
+
+log_fit_1 <- train(HeartDisease ~ ChestPainType + Age + Sex,
+                   data = heartTrain,
+                   method = "glm",
+                   family = "binomial",
+                   preProcess = c("center", "scale"),
+                   trControl = trctrl)
+log_fit_1
+
+#See which ones predicted correctly on test set.
+
+confusionMatrix(data = heartTest$HeartDisease, reference = predict(log_fit_1, newdata=heartTest))
+
+#80.36% accuracy on test set.
+
+
+#Logistic model using all predictors.
+
+log_fit_2 <- train(HeartDisease ~ .,
+                   data = heartTrain,
+                   method = "glm",
+                   family = "binomial",
+                   preProcess = c("center", "scale"),
+                   trControl = trctrl)
+log_fit_2
+
+
+#See which ones predicted correctly on test set.
+
+confusionMatrix(data = heartTest$HeartDisease, reference = predict(log_fit_2, newdata=heartTest))
+
+#84% accuracy on test set.
+
+
+#Logistic model wtih interaction terms.
+
+log_fit_3 <- train(HeartDisease ~ ChestPainType*Age + Sex*Cholesterol,
+                   data = heartTrain,
+                   method = "glm",
+                   family = "binomial",
+                   preProcess = c("center", "scale"),
+                   trControl = trctrl)
+log_fit_3
+
+confusionMatrix(data = heartTest$HeartDisease, reference = predict(log_fit_3, newdata=heartTest))
+
+#81.8% accuracy on test set.
+
+
+
 
 ```
 
