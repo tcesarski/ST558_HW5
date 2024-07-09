@@ -7,13 +7,27 @@ author: "Taylor Cesarski"
 # Task 1: Conceptual Questions
 ### Question 1: What is the purpose of using cross-validation when fitting a random forest model?
 
+The purpose of cross validation in general is to split data multiple ways, do the fitting/testing process, and then combine results. Sometimes when using a training or test set you may not have enough data or you may get a weird split of the data so it can be helpful to split into many folds where you train on the first k-1 folds and test on the kth fold. Then repeat the process. In the context of a random forest model (and bagged tree models in general), this process happens by using out of bag observations. With repeated bootstrap samples, they only use about 2/3 of the data in the full sample so then you have a remaining portion to test on that wasn't used in the training of the model. 
+
+
 ### Question 2: Describe the bagged tree algorithm.
+
+The bagged tree algorithm represents bootstrap aggregation. The idea is that you get a bootstrap sample, train tree on this sample, and then resample with replacement and repeat the process B number of times. Then your final prediction is an average of these predictions if using a regression tree or use a majority vote (among other options) for classification trees. This method is more ideal than a single tree because it decreases the variability in the predictions. 
+
 
 ### Question 3: What is meant by a general linear model?
 
+A general linear model is a model that has a continuous response variable and allows for both continuous and categorical predictors. This could be a simple linear regression, multiple linear regression, among others.
+
+
 ### Question 4: When fitting a multiple linear regression model, what does adding an interaction term do? That is, what does it allow the model to do differently as compared to when it is not included in the model?
 
+Adding an interaction term allows you to add a term that accounts for the relationship between two predictor variables through using the notation x1:x2. Then, you can fit a "best saddle" through the points, rather than simply a best plane. This enables you to have a more flexible surface to fit to the data and make predictions.
+
+
 ### Question 5: Why do we split our data into a training and test set?
+
+We split our data into a training and a test set so that we can train/fit the model on part of the data and then test how well the model is performing on the other part of the data. By doing this, we ensure that we are not overfitting the model to the data we have and that the model can generalize to data it hasn't yet seen. 
 
 
 ```{r}
