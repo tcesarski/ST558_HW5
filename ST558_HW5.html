@@ -670,7 +670,44 @@ Prediction   0   1
        'Positive' Class : 0               
                                           </code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb54"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a><span class="co">#81.8% accuracy on test set.</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb54"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a><span class="co">#81.8% accuracy on test set.</span></span>
+<span id="cb54-2"><a href="#cb54-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb54-3"><a href="#cb54-3" aria-hidden="true" tabindex="-1"></a><span class="co">#The best model appears to be the second logistic regression that uses all predictors.</span></span>
+<span id="cb54-4"><a href="#cb54-4" aria-hidden="true" tabindex="-1"></a><span class="co">#Below is a summary.</span></span>
+<span id="cb54-5"><a href="#cb54-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb54-6"><a href="#cb54-6" aria-hidden="true" tabindex="-1"></a><span class="fu">summary</span>(log_fit_2)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+Call:
+NULL
+
+Coefficients:
+                 Estimate Std. Error z value Pr(&gt;|z|)    
+(Intercept)       0.39472    0.11653   3.387 0.000706 ***
+Age               0.18806    0.13052   1.441 0.149634    
+SexM              0.49881    0.11849   4.210 2.56e-05 ***
+ChestPainTypeATA -0.68065    0.13195  -5.159 2.49e-07 ***
+ChestPainTypeNAP -0.60781    0.11274  -5.391 7.00e-08 ***
+ChestPainTypeTA  -0.28411    0.09940  -2.858 0.004260 ** 
+RestingBP         0.09367    0.11800   0.794 0.427306    
+Cholesterol      -0.22539    0.13007  -1.733 0.083110 .  
+FastingBS1        0.48434    0.12344   3.924 8.72e-05 ***
+RestingECGNormal -0.08118    0.13997  -0.580 0.561936    
+RestingECGST     -0.20094    0.14662  -1.370 0.170531    
+MaxHR            -0.36078    0.13154  -2.743 0.006094 ** 
+ExerciseAnginaY   0.70405    0.13003   5.414 6.15e-08 ***
+Oldpeak           0.47241    0.12868   3.671 0.000241 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 883.97  on 642  degrees of freedom
+Residual deviance: 516.64  on 629  degrees of freedom
+AIC: 544.64
+
+Number of Fisher Scoring iterations: 5</code></pre>
+</div>
 </div>
 </section>
 

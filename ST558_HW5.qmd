@@ -79,14 +79,14 @@ table(heart_data$HeartDisease, heart_data$FastingBS)
 
 #Means of HR, Age, BP, and chol for those with and without heart disease. 
 #Group with heart disease has lower max HR, higher age, slightly higher BP, and lower cholesterol. 
-heart_data |>
+num_sums <- heart_data |>
   group_by(HeartDisease) |>
   summarize(mean_max_hr = mean(MaxHR),
             mean_age = mean(Age),
             mean_bp = mean(RestingBP),
             mean_chol = mean(Cholesterol))
 
-heart_data
+num_sums
 
 ```
 
@@ -103,6 +103,7 @@ target_heart <- heart_data |>
 
 
 
+
 dummies <- dummyVars(HeartDisease ~ Sex + ExerciseAngina + ChestPainType + RestingECG, data = heart_data)
 dummies
 dummy_data <- predict(dummies, newdata = heart_data)
@@ -115,8 +116,8 @@ head(heart_final)
 ```{r}
 set.seed(100)
 trainIndex <- createDataPartition(heart_final$HeartDisease, p =0.7, list = FALSE)
-heartTrain <- heart_final[trainIndex, ]
-heartTest <- heart_final[-trainIndex, ]
+subheartTrain <- heart_final[trainIndex, ]
+subheartTest <- heart_final[-trainIndex, ]
 ```
 
 # kNN
@@ -126,25 +127,23 @@ trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
 set.seed(50)
 #Based on EDA, I chose to use MaxHR, Age, and Cholesterol in the model. It didn't seem like there was a significant difference in blood pressure.
 knn_fit <- train(HeartDisease ~ MaxHR + Age + Cholesterol,
-                 data = heartTrain, 
+                 data = subheartTrain, 
                  method = "knn",
                  trControl=trctrl,
                  preProcess = c("center", "scale"),
                  tuneGrid = data.frame(k = 1:40))
 
-#It appears that the best fit was using 30 neighbors as this gave the highest accuracy.
+#It appears that the best fit was using 33 neighbors as this gave the highest accuracy.
 knn_fit
 
 #Test the model on the test data set.
-knn_predict <- predict(knn_fit, newdata = heartTest)
+knn_predict <- predict(knn_fit, newdata = subheartTest)
 
-confusionMatrix(knn_predict, heartTest$HeartDisease)
+confusionMatrix(knn_predict, subheartTest$HeartDisease)
 
-#This correctly predicts heart disease about 71.64% of the time.
-
+#This correctly predicts heart disease about 72.36% of the time.
 
 ```
-
 
 # Logistic Regression
 ```{r}
@@ -205,10 +204,47 @@ confusionMatrix(data = heartTest$HeartDisease, reference = predict(log_fit_3, ne
 
 #81.8% accuracy on test set.
 
+#Best logistic model appears to be using logistic model 2 - using all predictors. #Give a summary of the model.
+
+summary(log_fit_2)
+
+```
+
+# Tree Models.
+
+```{r}
+#Fit full classification tree.
+
+library(tree)
+library(rpart)
+
+heartTrain
+
+heartTrain$Sex <- as.factor(heartTrain$Sex)
+heartTrain$ChestPainType <- as.factor(heartTrain$ChestPainType)
+heartTrain$RestingECG <- as.factor(heartTrain$RestingECG)
+heartTrain$ExerciseAngina <- as.factor(heartTrain$ExerciseAngina)
+
+set.seed(150)
+train_control <- trainControl(method = "cv", number = 10)
+
+tune_parameter <- data.frame(cp = seq(0, 0.1, by = 0.001))
+tune_parameter
+
+
+class_tree <- train(HeartDisease ~ ExerciseAngina*ChestPainType,
+                    data = heartTrain,
+                    method = "rpart",
+                    trControl = train_control,
+                    tuneGrid = tune_parameter)
+class_tree
+
+confusionMatrix(data = heartTest$HeartDisease, reference = predict(class_tree, newdata=heartTest))
+
+#Accuracy is 78.55%
 
 
 
 ```
-
 
 
