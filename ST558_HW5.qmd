@@ -7,7 +7,7 @@ author: "Taylor Cesarski"
 # Task 1: Conceptual Questions
 ### Question 1: What is the purpose of using cross-validation when fitting a random forest model?
 
-The purpose of cross validation in general is to split data multiple ways, do the fitting/testing process, and then combine results. Sometimes when using a training or test set you may not have enough data or you may get a weird split of the data so it can be helpful to split into many folds where you train on the first k-1 folds and test on the kth fold. Then repeat the process. In the context of a random forest model (and bagged tree models in general), this process happens by using out of bag observations. With repeated bootstrap samples, they only use about 2/3 of the data in the full sample so then you have a remaining portion to test on that wasn't used in the training of the model. 
+The purpose of using cross validation when fitting a random forest model is to find mtry - the tuning parameter. This represents the random subset of predictors that is used in the model.  
 
 
 ### Question 2: Describe the bagged tree algorithm.
@@ -17,7 +17,7 @@ The bagged tree algorithm represents bootstrap aggregation. The idea is that you
 
 ### Question 3: What is meant by a general linear model?
 
-A general linear model is a model that has a continuous response variable and allows for both continuous and categorical predictors. This could be a simple linear regression, multiple linear regression, among others.
+A general linear model is a model that has a continuous response variable and allows for both continuous and categorical predictors. This could be a simple linear regression, multiple linear regression, among others. But the response and errors follow a normal distribution, which makes it different from a generalized linear model where those can come from non-normal distributions.
 
 
 ### Question 4: When fitting a multiple linear regression model, what does adding an interaction term do? That is, what does it allow the model to do differently as compared to when it is not included in the model?
@@ -29,7 +29,7 @@ Adding an interaction term allows you to add a term that accounts for the relati
 
 We split our data into a training and a test set so that we can train/fit the model on part of the data and then test how well the model is performing on the other part of the data. By doing this, we ensure that we are not overfitting the model to the data we have and that the model can generalize to data it hasn't yet seen. 
 
-
+# Read in the dataset.
 ```{r, warning = FALSE, message = FALSE}
 library(tidyverse)
 #Read in the heart dataset.
@@ -37,9 +37,7 @@ heart_data <- read_csv("heart.csv")
 ```
 
 # Quick EDA/Data Preparation - Questions 1 and 2.
-Based on the EDA that follows, it appears that the following predictors have the strongest relationship to heart disease:
-* Categorical: ChestPainType, Sex, RestingECG, FastingBS, ExerciseAngina
-* Numeric: MaxHR, Cholesterol, Age
+Based on the EDA that follows, it appears that the following predictors have the strongest relationship to heart disease: Categorical: ChestPainType, Sex, FastingBS, ExerciseAngina and Numeric: MaxHR, Oldpeak. I will focus on some of these variables in the models that follow.
 ```{r}
 #Write over the heart dataset. Remove the ST_Slope column and convert the HeartDisease and FastingBS columns to factors.
 heart_data <- heart_data |>
@@ -49,7 +47,7 @@ heart_data <- heart_data |>
 #Print the first few rows of the dataset to check that it is working correctly.
 head(heart_data)
 
-#Check for missing values. It appears there are no missing values.
+#Check for missing values. It appears there are no missing values, although some have values of 0 in them. These will be dropped later if I end up using these variables.
 missing_vals <- colSums(is.na(heart_data))
 missing_vals
 
@@ -93,9 +91,12 @@ ggplot(heart_data, aes(x = Age, y = HeartDisease)) +
   geom_boxplot()
 
 #Boxplots of cholesterol by heart disease.
-#Surprisingly, cholesterol appears lower with heart disease, but there is a lot of variability in the non-heart disease group.
-ggplot(heart_data, aes(x = Cholesterol, y = HeartDisease)) +
-  geom_boxplot()
+#Without the missing values, it appears that cholesterol is maybe slightly higher in those with heart disease.
+mod_heart <- heart_data |>
+  filter(Cholesterol > 0)
+ggplot(mod_heart, aes(x = Cholesterol))+
+  geom_density() +
+  facet_wrap(~HeartDisease)
 
 #Chest pain type and heart disease bar plots.
 #It appears that ASY chest pain is a strong indicator of heart disease.
@@ -105,7 +106,7 @@ ggplot(heart_data, aes(x = ChestPainType, fill = HeartDisease)) +
 
 #Means of HR, Age, BP, and chol for those with and without heart disease. 
 #Group with heart disease has lower max HR, higher age, slightly higher BP, slightly lower Oldpeak, and lower cholesterol. 
-num_sums <- heart_data |>
+num_sums <- mod_heart |>
   group_by(HeartDisease) |>
   summarize(mean_max_hr = mean(MaxHR),
             mean_age = mean(Age),
@@ -119,14 +120,14 @@ num_sums
 
 
 # Creating Dummy Variables - EDA Section #3
-I am taking the approach of defining the numeric predictors in one dataset, the target response (HeartDisease) in another, and the dummy variables in another. Then I will use cbind to combine the columns.
-```{r, warning = FALSE}
+I am taking the approach of defining the numeric predictors in one dataset, the target response (HeartDisease) in another, and the dummy variables in another. Then I will use cbind to combine the columns. We are creating dummy variables so that we can use numeric predictors that are essentially classified into catgories in the k nearest neighbors.
+```{r, message = FALSE, warning = FALSE}
 #Read in the caret package.
 library(caret)
 
-#Save the numeric precitors as num_heart.
+#Save the numeric precitors as num_heart (as well as Fasting Blood Sugar which is technically a factor but doesn't need dummy variables because it's already coded as 0/1).
 num_heart <- heart_data |>
-  select(Age, RestingBP, Cholesterol, MaxHR, Oldpeak)
+  select(Age, RestingBP, Cholesterol, MaxHR, Oldpeak, FastingBS)
 #Save the target predictor (HeartDisaese) as target_heart.
 target_heart <- heart_data |>
   select(HeartDisease)
@@ -142,9 +143,11 @@ head(heart_final)
 ```
 
 # Split your Data
+I am going to split the data into a training and a test set using the createDataPartition() function from the caret package. We split into a training/test set so that we can use part of the data that the model wasn't trained on to evaluate how well the model is doing at predicting. 
 ```{r}
-#Set the seeda at 100 for reproducibility.
+#Set the seed at 100 for reproducibility.
 set.seed(100)
+
 #Use the createDataPartition from the caret package. Get 70% of the rows.
 trainIndex <- createDataPartition(heart_final$HeartDisease, p =0.7, list = FALSE)
 #Assign those 70% to the training dataset.
@@ -154,24 +157,27 @@ subheartTest <- heart_final[-trainIndex, ]
 ```
 
 # kNN
+Here I am going to implement the k nearest neighbors algorithm for classification. I am going to use the variables: Sex (SexM and SexF as defined above as dummy variables), ChestPainType (ASY, ATA, NAP, and TA), FastingBS, Oldpeak, and ExerciseAngina (ExerciseAnginaY and ExerciseAnginaN).
 ```{r}
 #Set the train control to repeated 10 fold cross validation with 3 repeats. This will be used later when training the model.
-trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
 #Set seed for reproducibility.
 set.seed(50)
-#Based on EDA, I chose to use MaxHR, Age, and Cholesterol in the model. I chose to do main effect & all interaction terms.
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+#Convert to factors.
+subheartTrain$HeartDisease <- as.factor(subheartTrain$HeartDisease)
+subheartTest$HeartDisease <- as.factor(subheartTest$HeartDisease)
 #Use train function on the subheartTrain dataset created above.
 #Want the k nearest neighbors method. 
 #Center and scale using preprocess.
-#Create a tune grid data frame from 1 to 40 to pick the best number of number of neighbors to use.
-knn_fit <- train(HeartDisease ~ MaxHR*Age*Cholesterol,
+#Create a tune grid data frame from 1 to 40 to pick the best number of neighbors to use.
+knn_fit <- train(HeartDisease ~ SexM + SexF + ExerciseAnginaN + ExerciseAnginaY + ChestPainTypeASY + ChestPainTypeATA + ChestPainTypeATA + ChestPainTypeNAP + ChestPainTypeTA + FastingBS + Oldpeak,
                  data = subheartTrain, 
                  method = "knn",
                  trControl=trctrl,
                  preProcess = c("center", "scale"),
                  tuneGrid = data.frame(k = 1:40))
 
-#It appears that the best fit was using 38 neighbors as this gave the highest accuracy.
+#It appears that the best fit was using 19 neighbors as this gave the highest accuracy of about 79% on the training dataset.
 knn_fit
 
 #Test the model on the test data set.
@@ -179,11 +185,14 @@ knn_predict <- predict(knn_fit, newdata = subheartTest)
 
 confusionMatrix(knn_predict, subheartTest$HeartDisease)
 
-#This correctly predicts heart disease about 72.36% of the time in the test data set.
+#This correctly predicts heart disease about 79% of the time in the test data set.
 
 ```
 # Logistic Regression
+Below I will create three logistic regression models. I will go back to the original data set since I don't need to use dummy variables when using the glm() function.
+
 ## Logistic Regression Model #1
+The first function will use Sex, ChestPainType, FastingBS, and Exercise Angina as main effect terms, as I found these relevant during my EDA.
 ```{r}
 #Not using dummy variables so using createDataPartition to select 70% of rows on the original data set.
 set.seed(100)
@@ -193,84 +202,85 @@ heartTrain <- heart_data[trainIndex, ]
 #Using remaining rows on heartTest.
 heartTest <- heart_data[-trainIndex, ]
 
+#Create the train Control using the trainControl function to do repeated cross validation.
+set.seed(50)
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+#Convert HeartDisease and FastingBS to factor.
+heartTrain$HeartDisease <- as.factor(heartTrain$HeartDisease)
+heartTest$HeartDisease <- as.factor(heartTest$HeartDisease)
 
 #Fit first logistic regression model using only main interaction terms.
 #Use the heartTrain dataset.
 #Use method = glm to indicate a generalized linear model.
 #Use family = binomial to indicate logistic regression.
 #Preprocess the data and use the same 10 fold repeated cross validation as above.
-log_fit_1 <- train(HeartDisease ~ ChestPainType + ExerciseAngina + FastingBS + MaxHR + Sex,
+log_fit_1 <- train(HeartDisease ~ ChestPainType + ExerciseAngina + FastingBS + Sex,
                    data = heartTrain,
                    method = "glm",
                    family = "binomial",
                    preProcess = c("center", "scale"),
                    trControl = trctrl)
-#80.39% accuracy on training set.
+#79.7% accuracy on training set.
 log_fit_1
 
-
-#Use a confusion matrix to check accuracy on test set.
-#This model has a 82.18% accuracy on test set.
-
-confusionMatrix(data = heartTest$HeartDisease, reference = predict(log_fit_1, newdata=heartTest))
 ```
 
 ## Logistic Model #2 
 
 ```{r}
-#Create a logistic model using all predictors. Based on EDA, it appeared that all variables had some effect on Heart Disease, although some were stronger predictors than others.
+#Create a logistic model using interaction of age and sex (and main effects), as well as ChestPainType. Based on EDA, it appeared that all variables had some effect on Heart Disease, although some were stronger predictors than others.
 #Same dataset, method, trcontrol, family, etc. as defined above.
-log_fit_2 <- train(HeartDisease ~ .,
+
+#Create the train Control using the trainControl function to do repeated cross validation.
+set.seed(50)
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+log_fit_2 <- train(HeartDisease ~ Age*Sex + ChestPainType,
                    data = heartTrain,
                    method = "glm",
                    family = "binomial",
                    preProcess = c("center", "scale"),
                    trControl = trctrl)
-#80.77% accuracy on training set.
+#76.8% accuracy on training set.
 log_fit_2
 
-
-#Use a confusion matrix to check accuracy on test set.
-#This model has a 84% accuracy on test set.
-confusionMatrix(data = heartTest$HeartDisease, reference = predict(log_fit_2, newdata=heartTest))
 ```
 
 ## Logistic Model #3
 
 ```{r}
-#Create a logistic model using all possible combinations of some of the variables (and a main effect sex term that seemed most relevant (based on the EDA) to the prediction of Heart Disease. 
+#Create a logistic model using all possible combinations of ChestPainType and Exercise Angina (since both are related to chest pain), along with Age, Sex, and FastingBS variables.
 #Same method, family, etc. as defined above.
-log_fit_3 <- train(HeartDisease ~ ChestPainType*ExerciseAngina + FastingBS*MaxHR + Sex,
+
+#Create the train Control using the trainControl function to do repeated cross validation.
+set.seed(50)
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+log_fit_3 <- train(HeartDisease ~ ChestPainType*ExerciseAngina + FastingBS + Age + Sex,
                    data = heartTrain,
                    method = "glm",
                    family = "binomial",
                    preProcess = c("center", "scale"),
                    trControl = trctrl)
-#80.35% accuracy on training set.
+#79.4% accuracy on training set.
 log_fit_3
-
-#Use a confusion matrix to check accuracy on test set.
-#This model has a 80.73% accuracy on test set.
-confusionMatrix(data = heartTest$HeartDisease, reference = predict(log_fit_3, newdata=heartTest))
 ```
 
-
-
 ## Pick best logistic model.
-Based on the accuracy metric, it appears that the logistic model #2 (using all predictors) has the highest accuracy on the test set. Here is the confusionMatrix again for log_fit_2 and a summary of it.
+Based on the accuracy metric, it appears that the logistic model #1 (using Sex, ChestPainType, FastingBS, and Exercise Angina as main effect terms) has the highest accuracy on the test set at 79.7%. Here is the confusionMatrix for log_fit_1 and a summary of it.
 
 ```{r}
 #Basic summary of model.
-summary(log_fit_2)
+summary(log_fit_1)
 
 #Use confusion matrix on chosen model.
-#This model has a 84% accuracy on test set.
-confusionMatrix(data = heartTest$HeartDisease, reference = predict(log_fit_2, newdata=heartTest))
-
+#This model has a 80% accuracy on test set.
+confusionMatrix(data = heartTest$HeartDisease, reference = predict(log_fit_1, newdata=heartTest))
 ```
 
 # Tree Models
-
+In this section, I will make three tree models: a classification tree, a random forest, and a boosted tree.
 ```{r, message=FALSE, warning=FALSE}
 #Load in required libraries.
 library(tree)
@@ -279,23 +289,23 @@ library(rpart)
 
 
 ## Classification Tree Model
+First I will make a classification tree. The goal of a classification tree is to predict group memebership - heart disease in this case!
 ```{r}
 #Set seed for reproducibility.
-set.seed(150)
-#Same code as above. Repeated 10 fold cross validation.
+set.seed(50)
 trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
 
 #Create the tuneGrid by making a dataframe of the cp parameter that starts at 0, goes to 0.1 and counts by 0.001.
 tune_parameter <- data.frame(cp = seq(0, 0.1, by = 0.001))
 
-#Convert to factors or else get Error: Zero-length variable name.
+#Convert the rest of the cateogorical variables to factors.
 heartTrain$Sex <- as.factor(heartTrain$Sex)
 heartTrain$ChestPainType <- as.factor(heartTrain$ChestPainType)
 heartTrain$RestingECG <- as.factor(heartTrain$RestingECG)
 heartTrain$ExerciseAngina <- as.factor(heartTrain$ExerciseAngina)
 
 
-#Create a classification tree using main effect terms of Exercise Angina, Chest Pain Type, Sex, MaxHR, and Fasting Blood Sugar.
+#Create a classification tree using predictors of Exercise Angina, Chest Pain Type, Sex, MaxHR, and Fasting Blood Sugar.
 #Use the heartTrain data set.
 #Use rpart for the method.
 #Use the train control defined above (repeated 10 fold cross validation) and the tuneGrid defined above.
@@ -304,22 +314,23 @@ class_tree <- train(HeartDisease ~ ChestPainType + FastingBS + ExerciseAngina + 
                     method = "rpart",
                     trControl = trctrl,
                     tuneGrid = tune_parameter)
-#Accuracy of 80.1% on training set.
+#Accuracy of 78.4% on training set.
 class_tree
-
-#Use confusion matrix on chosen model.
-#This model has a 78.55% accuracy on test set.
-confusionMatrix(data = heartTest$HeartDisease, reference = predict(class_tree, newdata=heartTest))
 
 
 ```
 
 ## Random Forest Model
+In this model we will use a random forest meaning that we will choose a random subset of predictors to create the model. We will get the random subset of predictors using cross validation. I will use the same predictors as the classification tree (Exercise Angina, Chest Pain Type, Sex, MaxHR, and FastingBS) to make for easier comparison.
 ```{r}
-#Create a random forest model using same predictors as classification tree for easier comparison. (Exercise Angina, Chest Pain Type, Sex, MaxHR, and Fasting Blood Sugar)
 #Use the heartTrain data set.
 #Use rf for the method.
-#Use the train control defined above (repeated 10 fold cross validation) and the tuneGrid defined above.
+#Use the train control defined above (repeated 10 fold cross validation) and the tuneGrid is from 1 to 5 because I have chosen five predictors.
+#Set seed for reproducibility and do 3 repeats of 10 fold cross validation.
+set.seed(50)
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+
 rf_model <- train(HeartDisease ~ ChestPainType + FastingBS + ExerciseAngina + Sex + MaxHR,
                     data = heartTrain,
                     method = "rf",
@@ -327,18 +338,18 @@ rf_model <- train(HeartDisease ~ ChestPainType + FastingBS + ExerciseAngina + Se
                     tuneGrid = data.frame(mtry = 1:5))
 #Accuracy of 81.5% on training set.
 rf_model
-
-#Use confusion matrix on chosen model.
-#This model has a 79.64% accuracy on test set.
-confusionMatrix(data = heartTest$HeartDisease, reference = predict(rf_model, newdata=heartTest))
-
-
 ```
 
 
 ## Boosted Tree
-
+Here I will create a boosted tree model to grow the tree sequentially. I will use the same predictors as the classification tree (Exercise Angina, Chest Pain Type, Sex, MaxHR, and FastingBS) to make for easier comparison.
 ```{r}
+#Set seed for reproducibility and do 3 repeats of 10 fold cross validation.
+set.seed(50)
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+
+
 #Create vectors of tuning parameters.
 tune1 <- c(25,50,100,200)
 tune2 <- 1:3
@@ -354,7 +365,6 @@ tune_parameters <- expand.grid(n.trees = tune1,
 #Print out data frame of tuning parameters.
 tune_parameters
 
-#Create a boosted tree model using same predictors as classification tree & random forest for easier comparison. (Exercise Angina, Chest Pain Type, Sex, MaxHR, and Fasting Blood Sugar)
 #Use the heartTrain data set.
 #Use gbm for the method.
 #Use the train control defined above (repeated 10 fold cross validation) and the tuneGrid defined above.
@@ -366,17 +376,21 @@ boost_tree <- train(HeartDisease ~ ChestPainType + Sex + Age + RestingECG + MaxH
                     tuneGrid = tune_parameters,
                     verbose = FALSE)
 
-#Accuracy of 79.27% on the training set.
+#Accuracy of 79.3% on the training set.
 boost_tree
-
-#Use confusion matrix on chosen model.
-#This model has a 78.55% accuracy on test set.
-confusionMatrix(data = heartTest$HeartDisease, reference = predict(boost_tree, newdata=heartTest))
 ```
 
+## Choose best tree model
+It appears that the random forest model gives the best accuracy on the training data set. Here is a confusion matrix for the test set to see the accuracy there.
+```{r}
+confusionMatrix(data = heartTest$HeartDisease, predict(rf_model, newdata=heartTest))
+
+#79.27% accuracy on the testing data set.
+
+```
 # Wrap Up
 
-Based on the models, the logistic regression model using all predictors appears to be the best fit with an 84% accuracy metric on the test set.
+Based on the models, the logistic regression model # 1 using Sex, ChestPainType, FastingBS, and Exercise Angina as main effect terms appears to be the best fit slightly with 80% accuracy on the test data set.
 
 
 
